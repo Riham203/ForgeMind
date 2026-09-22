@@ -1,0 +1,598 @@
+{% extends "base.html" %}
+{% block title %}Knowledge Repository · Excel Control Center{% endblock %}
+{% block page_title %}Industrial Breakdown Knowledge Center{% endblock %}
+{% block page_sub %}Excel-style tabular grid with multi-column filtering, inline editing, vector indexing, and CSV/Excel import/export{% endblock %}
+{% block content %}
+<div class="space-y-4" x-data="excelGridApp()" x-init="fetchRecords()">
+
+    <!-- Control Header: Search, Filters, and Tools -->
+    <div class="bg-darkcard border border-darkborder p-4 rounded-2xl shadow-sm space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div>
+                <label class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Quick Search</label>
+                <div class="relative mt-1">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-zinc-500 text-xs"></i>
+                    <input x-model="q" @input.debounce.300ms="fetchRecords()"
+                           placeholder="Code, asset, staff, work..."
+                           class="w-full pl-8 pr-3 py-2 bg-[#202123] border border-zinc-700/80 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-orange-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Asset Code</label>
+                <select x-model="asset" @change="fetchRecords()"
+                        class="w-full mt-1 bg-[#202123] border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-orange-500">
+                    <option value="ALL">All Assets</option>
+                    {% for a in assets %}
+                    <option value="{{ a.asset_code }}">{{ a.asset_code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Staff / Technician</label>
+                <select x-model="staff" @change="fetchRecords()"
+                        class="w-full mt-1 bg-[#202123] border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-orange-500">
+                    <option value="ALL">All Technicians</option>
+                    {% for t in technicians %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Status</label>
+                <select x-model="status" @change="fetchRecords()"
+                        class="w-full mt-1 bg-[#202123] border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-orange-500">
+                    <option value="ALL">All Statuses</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Pending">Pending</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Received From</label>
+                <input type="date" x-model="from" @change="fetchRecords()"
+                       class="w-full mt-1 bg-[#202123] border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-orange-500">
+            </div>
+
+            <div>
+                <label class="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">Received To</label>
+                <input type="date" x-model="to" @change="fetchRecords()"
+                       class="w-full mt-1 bg-[#202123] border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-orange-500">
+            </div>
+        </div>
+
+        <!-- Toolbar Actions -->
+        <div class="flex flex-wrap items-center justify-between pt-2 border-t border-zinc-800/80 gap-2">
+            <div class="flex items-center gap-2">
+                <span class="text-xs text-zinc-400 font-medium">
+                    Showing <strong class="text-orange-400" x-text="records.length"></strong> breakdown rows
+                </span>
+                <button x-show="q || asset !== 'ALL' || staff !== 'ALL' || status !== 'ALL' || from || to"
+                        @click="resetFilters()"
+                        class="text-[11px] text-zinc-400 hover:text-white underline ml-2">
+                    Reset filters
+                </button>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <!-- Import CSV Modal Trigger -->
+                {% if current_user.can_write() %}
+                <button @click="showImportModal = true"
+                        class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-semibold text-zinc-200 flex items-center gap-2 transition-colors">
+                    <i class="fa-solid fa-file-import text-blue-400"></i> Import CSV
+                </button>
+                {% endif %}
+
+                <!-- Export CSV Button -->
+                <button @click="exportCSV()"
+                        class="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-semibold text-zinc-200 flex items-center gap-2 transition-colors">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i> Export CSV / Excel
+                </button>
+
+                <!-- Log New Breakdown -->
+                {% if current_user.can_write() %}
+                <a href="{{ url_for('knowledge.create') }}"
+                   class="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-xs font-semibold text-white flex items-center gap-2 shadow-lg shadow-orange-600/20 transition-all">
+                    <i class="fa-solid fa-plus"></i> New Log
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Excel Table Container -->
+    <div class="bg-darkcard border border-darkborder rounded-2xl overflow-hidden shadow-xl">
+        <div class="overflow-x-auto max-h-[68vh] relative">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead class="bg-zinc-900/95 border-b border-zinc-800 text-zinc-400 uppercase text-[10px] tracking-wider sticky top-0 z-20 backdrop-blur">
+                    <tr>
+                        <!-- Code -->
+                        <th @click="sortBy('code')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>Code</span>
+                                <span class="text-[9px]" x-text="sortCol === 'code' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Received On -->
+                        <th @click="sortBy('receivedOn')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>receivedOn</span>
+                                <span class="text-[9px]" x-text="sortCol === 'receivedOn' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Completed On -->
+                        <th @click="sortBy('completedOn')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>completedOn</span>
+                                <span class="text-[9px]" x-text="sortCol === 'completedOn' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Asset Code -->
+                        <th @click="sortBy('assetCode')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>Asset Code</span>
+                                <span class="text-[9px]" x-text="sortCol === 'assetCode' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Asset Description -->
+                        <th @click="sortBy('assetDescription')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>Asset Description</span>
+                                <span class="text-[9px]" x-text="sortCol === 'assetDescription' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Description -->
+                        <th @click="sortBy('description')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>Description</span>
+                                <span class="text-[9px]" x-text="sortCol === 'description' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Staff Member -->
+                        <th @click="sortBy('staffMember')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>Staff Member</span>
+                                <span class="text-[9px]" x-text="sortCol === 'staffMember' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Status -->
+                        <th @click="sortBy('status')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>Status</span>
+                                <span class="text-[9px]" x-text="sortCol === 'status' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Work Performed -->
+                        <th @click="sortBy('workPerformed')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>workPerformed</span>
+                                <span class="text-[9px]" x-text="sortCol === 'workPerformed' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <!-- Notes -->
+                        <th @click="sortBy('notes')" class="p-3.5 border-r border-zinc-800 cursor-pointer hover:bg-zinc-800/60 select-none whitespace-nowrap">
+                            <div class="flex items-center justify-between gap-1">
+                                <span>notes</span>
+                                <span class="text-[9px]" x-text="sortCol === 'notes' ? (sortAsc ? '▲' : '▼') : '⇅'"></span>
+                            </div>
+                        </th>
+
+                        <th class="p-3.5 whitespace-nowrap">Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody class="divide-y divide-zinc-800/60">
+                    <template x-if="loading">
+                        <tr>
+                            <td colspan="11" class="p-8 text-center text-zinc-500">
+                                <i class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2"></i> Loading spreadsheet records...
+                            </td>
+                        </tr>
+                    </template>
+
+                    <template x-if="!loading && records.length === 0">
+                        <tr>
+                            <td colspan="11" class="p-8 text-center text-zinc-500">
+                                No industrial breakdown logs match the active filters.
+                            </td>
+                        </tr>
+                    </template>
+
+                    <template x-for="item in records" :key="item.id">
+                        <tr class="hover:bg-zinc-800/30 transition-colors"
+                            :class="editingId === item.id ? 'bg-orange-950/20 ring-1 ring-orange-500/30' : ''">
+
+                            <!-- Code -->
+                            <td class="p-3 font-bold text-orange-400 border-r border-zinc-800/50 whitespace-nowrap" x-text="item.code"></td>
+
+                            <!-- Received On -->
+                            <td class="p-3 text-zinc-400 border-r border-zinc-800/50 whitespace-nowrap" x-text="item.receivedOn"></td>
+
+                            <!-- Completed On -->
+                            <td class="p-3 text-zinc-400 border-r border-zinc-800/50 whitespace-nowrap" x-text="item.completedOn || '—'"></td>
+
+                            <!-- Asset Code -->
+                            <td class="p-3 font-semibold text-zinc-200 border-r border-zinc-800/50 whitespace-nowrap" x-text="item.assetCode"></td>
+
+                            <!-- Asset Description (Editable) -->
+                            <td class="p-3 border-r border-zinc-800/50 min-w-[180px]">
+                                <template x-if="editingId === item.id">
+                                    <input x-model="editForm.assetDescription"
+                                           class="w-full bg-[#18181b] border border-orange-500/60 rounded px-2 py-1 text-xs text-white">
+                                </template>
+                                <template x-if="editingId !== item.id">
+                                    <span class="truncate block max-w-xs" :title="item.assetDescription" x-text="item.assetDescription"></span>
+                                </template>
+                            </td>
+
+                            <!-- Description (Problem summary) (Editable) -->
+                            <td class="p-3 border-r border-zinc-800/50 min-w-[220px]">
+                                <template x-if="editingId === item.id">
+                                    <textarea x-model="editForm.description" rows="2"
+                                              class="w-full bg-[#18181b] border border-orange-500/60 rounded px-2 py-1 text-xs text-white"></textarea>
+                                </template>
+                                <template x-if="editingId !== item.id">
+                                    <span class="line-clamp-2 block max-w-sm text-zinc-300" :title="item.description" x-text="item.description"></span>
+                                </template>
+                            </td>
+
+                            <!-- Staff Member -->
+                            <td class="p-3 border-r border-zinc-800/50 whitespace-nowrap text-zinc-200 font-medium" x-text="item.staffMember"></td>
+
+                            <!-- Status (Quick Toggle / Inline Editable) -->
+                            <td class="p-3 border-r border-zinc-800/50 whitespace-nowrap">
+                                <template x-if="editingId === item.id">
+                                    <select x-model="editForm.status"
+                                            class="bg-[#18181b] border border-orange-500/60 rounded px-2 py-1 text-[11px] text-white">
+                                        <option value="Approved">Approved</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Pending">Pending</option>
+                                    </select>
+                                </template>
+                                <template x-if="editingId !== item.id">
+                                    <div class="flex items-center gap-1.5">
+                                        <!-- Quick Status Toggle Menu -->
+                                        {% if current_user.can_write() %}
+                                        <select @change="updateStatus(item, $event.target.value)"
+                                                class="px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer border focus:outline-none"
+                                                :class="{
+                                                    'bg-amber-500/10 text-amber-400 border-amber-500/30': item.status === 'Pending',
+                                                    'bg-emerald-500/10 text-emerald-400 border-emerald-500/30': item.status === 'Approved',
+                                                    'bg-blue-500/10 text-blue-400 border-blue-500/30': item.status === 'Completed'
+                                                }">
+                                            <option value="Pending" :selected="item.status === 'Pending'">Pending</option>
+                                            <option value="Approved" :selected="item.status === 'Approved'">Approved</option>
+                                            <option value="Completed" :selected="item.status === 'Completed'">Completed</option>
+                                        </select>
+                                        {% else %}
+                                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold border"
+                                              :class="{
+                                                  'bg-amber-500/10 text-amber-400 border-amber-500/30': item.status === 'Pending',
+                                                  'bg-emerald-500/10 text-emerald-400 border-emerald-500/30': item.status === 'Approved',
+                                                  'bg-blue-500/10 text-blue-400 border-blue-500/30': item.status === 'Completed'
+                                              }"
+                                              x-text="item.status"></span>
+                                        {% endif %}
+                                    </div>
+                                </template>
+                            </td>
+
+                            <!-- Work Performed (Editable) -->
+                            <td class="p-3 border-r border-zinc-800/50 min-w-[240px]">
+                                <template x-if="editingId === item.id">
+                                    <textarea x-model="editForm.workPerformed" rows="2"
+                                              class="w-full bg-[#18181b] border border-orange-500/60 rounded px-2 py-1 text-xs text-white"></textarea>
+                                </template>
+                                <template x-if="editingId !== item.id">
+                                    <span class="line-clamp-2 block max-w-sm text-zinc-300" :title="item.workPerformed" x-text="item.workPerformed"></span>
+                                </template>
+                            </td>
+
+                            <!-- Notes (Editable) -->
+                            <td class="p-3 border-r border-zinc-800/50 min-w-[180px]">
+                                <template x-if="editingId === item.id">
+                                    <textarea x-model="editForm.notes" rows="2"
+                                              class="w-full bg-[#18181b] border border-orange-500/60 rounded px-2 py-1 text-xs text-white"></textarea>
+                                </template>
+                                <template x-if="editingId !== item.id">
+                                    <span class="line-clamp-2 block max-w-xs text-zinc-400" :title="item.notes" x-text="item.notes || '—'"></span>
+                                </template>
+                            </td>
+
+                            <!-- Actions / Edit controls -->
+                            <td class="p-3 whitespace-nowrap space-x-1">
+                                <template x-if="editingId === item.id">
+                                    <div class="flex items-center gap-1">
+                                        <button @click="saveEdit(item)"
+                                                class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-semibold flex items-center gap-1">
+                                            <i class="fa-solid fa-check"></i> Save
+                                        </button>
+                                        <button @click="cancelEdit()"
+                                                class="px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded text-[10px]">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </template>
+
+                                <template x-if="editingId !== item.id">
+                                    <div class="flex items-center gap-1">
+                                        {% if current_user.can_write() %}
+                                        <button @click="startEdit(item)"
+                                                class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded text-[10px] font-medium transition-colors"
+                                                title="Inline cell edit">
+                                            <i class="fa-solid fa-pen-to-square"></i> Edit
+                                        </button>
+                                        {% endif %}
+                                        <a :href="'/knowledge/' + item.id"
+                                           class="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-orange-400 border border-zinc-700 rounded text-[10px] font-medium transition-colors">
+                                            View
+                                        </a>
+                                    </div>
+                                </template>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="bg-zinc-900/90 border-t border-zinc-800 p-2.5 flex items-center justify-between text-[11px] text-zinc-400">
+            <div>
+                Tip: Click on column headers to sort ascending/descending. Click <strong>Edit</strong> to modify cell values inline.
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Approved</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400"></span> Completed</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> Pending</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import CSV / Excel Modal -->
+    <div x-show="showImportModal" x-cloak
+         class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div @click.outside="showImportModal = false"
+             class="bg-[#18181b] border border-zinc-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                        <i class="fa-solid fa-file-csv"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-sm text-white">Import Industrial Breakdown Logs</h3>
+                        <p class="text-[11px] text-zinc-400">CSV spreadsheet import & immediate vector indexing</p>
+                    </div>
+                </div>
+                <button @click="showImportModal = false" class="text-zinc-500 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="text-xs text-zinc-300 space-y-2">
+                <p>Upload a standard CSV log file containing breakdown records. Supported columns include:</p>
+                <div class="bg-zinc-900 p-3 rounded-xl border border-zinc-800 text-[10px] font-mono text-zinc-400 space-y-1">
+                    <p class="text-orange-400 font-semibold">Column Headers:</p>
+                    <p>code, received_on, completed_on, asset_code, asset_description, description, staff_member, status, work_performed, notes</p>
+                </div>
+            </div>
+
+            <form @submit.prevent="submitImport()" class="space-y-4">
+                <div class="border-2 border-dashed border-zinc-700 hover:border-orange-500/60 rounded-2xl p-6 text-center transition-colors">
+                    <i class="fa-solid fa-cloud-arrow-up text-2xl text-zinc-500 mb-2"></i>
+                    <p class="text-xs text-zinc-300 font-medium">Select or drag CSV log file here</p>
+                    <input type="file" id="csvFileInput" accept=".csv" required
+                           class="block w-full text-xs text-zinc-400 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:bg-zinc-800 file:text-white hover:file:bg-zinc-700 mt-3 cursor-pointer">
+                </div>
+
+                <div x-show="importStatus" class="text-xs p-3 rounded-xl"
+                     :class="importError ? 'bg-red-500/10 border border-red-500/30 text-red-400' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'"
+                     x-text="importStatus">
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+                    <button type="button" @click="showImportModal = false"
+                            class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" :disabled="importLoading"
+                            class="px-5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-semibold flex items-center gap-2">
+                        <i x-show="importLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+                        <span x-text="importLoading ? 'Importing & Vectorizing...' : 'Import & Vectorize'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function excelGridApp() {
+    return {
+        q: '',
+        asset: 'ALL',
+        staff: 'ALL',
+        status: 'ALL',
+        category: 'ALL',
+        from: '',
+        to: '',
+        sortCol: 'receivedOn',
+        sortAsc: false,
+        loading: false,
+        records: [],
+
+        // Inline edit state
+        editingId: null,
+        editForm: {},
+
+        // Import modal state
+        showImportModal: false,
+        importLoading: false,
+        importStatus: '',
+        importError: false,
+
+        async fetchRecords() {
+            this.loading = true;
+            const params = new URLSearchParams({
+                q: this.q,
+                asset: this.asset,
+                staff: this.staff,
+                status: this.status,
+                category: this.category,
+                from: this.from,
+                to: this.to,
+                sort_by: this.sortCol,
+                sort_dir: this.sortAsc ? 'asc' : 'desc'
+            });
+            try {
+                const res = await fetch('/api/records?' + params);
+                this.records = await res.json();
+            } catch (err) {
+                console.error('Error fetching records:', err);
+            }
+            this.loading = false;
+        },
+
+        sortBy(col) {
+            if (this.sortCol === col) {
+                this.sortAsc = !this.sortAsc;
+            } else {
+                this.sortCol = col;
+                this.sortAsc = true;
+            }
+            this.fetchRecords();
+        },
+
+        resetFilters() {
+            this.q = '';
+            this.asset = 'ALL';
+            this.staff = 'ALL';
+            this.status = 'ALL';
+            this.category = 'ALL';
+            this.from = '';
+            this.to = '';
+            this.fetchRecords();
+        },
+
+        // Fast status update
+        async updateStatus(item, newStatus) {
+            try {
+                const res = await fetch('/api/records/' + item.id + '/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    item.status = newStatus;
+                    if (data.record && data.record.completedOn) {
+                        item.completedOn = data.record.completedOn;
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to update status:', err);
+            }
+        },
+
+        // Inline edit handlers
+        startEdit(item) {
+            this.editingId = item.id;
+            this.editForm = {
+                assetDescription: item.assetDescription || '',
+                description: item.description || '',
+                workPerformed: item.workPerformed || '',
+                notes: item.notes || '',
+                status: item.status || 'Approved'
+            };
+        },
+
+        cancelEdit() {
+            this.editingId = null;
+            this.editForm = {};
+        },
+
+        async saveEdit(item) {
+            try {
+                const res = await fetch('/api/records/' + item.id + '/inline-edit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.editForm)
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    Object.assign(item, data.record);
+                    this.editingId = null;
+                    this.editForm = {};
+                } else {
+                    alert(data.error || 'Failed to save changes');
+                }
+            } catch (err) {
+                console.error('Failed to save inline edit:', err);
+            }
+        },
+
+        // Export to CSV
+        exportCSV() {
+            window.location.href = '/api/records/export';
+        },
+
+        // Submit CSV Import
+        async submitImport() {
+            const input = document.getElementById('csvFileInput');
+            if (!input || !input.files || !input.files[0]) {
+                this.importStatus = 'Please select a CSV file to upload.';
+                this.importError = true;
+                return;
+            }
+
+            this.importLoading = true;
+            this.importStatus = '';
+            this.importError = false;
+
+            const fd = new FormData();
+            fd.append('file', input.files[0]);
+
+            try {
+                const res = await fetch('/api/records/import', {
+                    method: 'POST',
+                    body: fd
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    this.importStatus = data.message || `Successfully imported ${data.count} records.`;
+                    this.importError = false;
+                    setTimeout(() => {
+                        this.showImportModal = false;
+                        this.importStatus = '';
+                        input.value = '';
+                        this.fetchRecords();
+                    }, 1200);
+                } else {
+                    this.importStatus = data.error || 'Failed to import CSV file.';
+                    this.importError = true;
+                }
+            } catch (err) {
+                this.importStatus = 'An error occurred during file upload.';
+                this.importError = true;
+            }
+            this.importLoading = false;
+        }
+    };
+}
+</script>
+{% endblock %}
+

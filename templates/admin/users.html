@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Admin Approvals{% endblock %}
+{% block page_title %}Admin Control Center{% endblock %}
+{% block page_sub %}Approve plant users and assign roles{% endblock %}
+{% block content %}
+<div class="bg-darkcard border border-darkborder rounded-3xl overflow-hidden shadow-xl">
+    <div class="p-4 bg-zinc-900/60 border-b border-zinc-800 flex items-center justify-between">
+        <div>
+            <h3 class="font-bold text-sm text-white">Platform Users & RBAC Permissions</h3>
+            <p class="text-xs text-zinc-400">Admin approval workflow for plant personnel registration</p>
+        </div>
+        <span class="text-xs text-zinc-500 font-medium">{{ people|length }} registered accounts</span>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+            <thead class="bg-zinc-900 text-[10px] uppercase text-zinc-400 tracking-wider">
+                <tr>
+                    <th class="p-3.5">Name</th>
+                    <th class="p-3.5">Email</th>
+                    <th class="p-3.5">Auth Provider</th>
+                    <th class="p-3.5">Assigned Role</th>
+                    <th class="p-3.5">Account Status</th>
+                    <th class="p-3.5">Approval Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/60">
+                {% for u in people %}
+                <tr class="hover:bg-zinc-800/30 transition-colors">
+                    <td class="p-3.5 font-semibold text-zinc-100 flex items-center gap-2">
+                        <div class="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center font-bold text-xs border border-orange-500/20">
+                            {{ u.initials() }}
+                        </div>
+                        <span>{{ u.name }}</span>
+                    </td>
+                    <td class="p-3.5 text-zinc-400 font-mono text-[11px]">{{ u.email }}</td>
+                    <td class="p-3.5">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] uppercase font-semibold bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                            {{ u.auth_provider.value if u.auth_provider.value is defined else u.auth_provider }}
+                        </span>
+                    </td>
+                    <td class="p-3.5">
+                        <form method="post" action="{{ url_for('admin.set_user_role', user_id=u.id) }}">
+                            <select name="role" onchange="this.form.submit()"
+                                    class="bg-zinc-900 border border-zinc-700/80 rounded-xl px-2.5 py-1 text-xs text-zinc-200 font-semibold focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer">
+                                {% for r in roles %}
+                                {% set rval = r.value if r.value is defined else r %}
+                                {% set uval = u.role.value if u.role.value is defined else u.role %}
+                                <option value="{{ rval }}" {% if uval == rval %}selected{% endif %}>{{ rval }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </td>
+                    <td class="p-3.5">
+                        {% set sval = u.status.value if u.status.value is defined else u.status %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border
+                            {% if sval == 'APPROVED' %}bg-emerald-500/10 text-emerald-400 border-emerald-500/30
+                            {% elif sval == 'REJECTED' %}bg-red-500/10 text-red-400 border-red-500/30
+                            {% else %}bg-amber-500/10 text-amber-400 border-amber-500/30{% endif %}">
+                            {{ sval }}
+                        </span>
+                    </td>
+                    <td class="p-3.5 space-x-1 whitespace-nowrap">
+                        <form method="post" action="{{ url_for('admin.set_user_status', user_id=u.id) }}" class="inline">
+                            <input type="hidden" name="status" value="APPROVED">
+                            <button class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-semibold transition-colors">
+                                Approve
+                            </button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin.set_user_status', user_id=u.id) }}" class="inline">
+                            <input type="hidden" name="status" value="REJECTED">
+                            <button class="px-2.5 py-1 bg-red-700 hover:bg-red-600 text-white rounded-lg text-[10px] font-semibold transition-colors">
+                                Reject
+                            </button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin.set_user_status', user_id=u.id) }}" class="inline">
+                            <input type="hidden" name="status" value="PENDING">
+                            <button class="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 rounded-lg text-[10px] font-medium transition-colors">
+                                Reset Pending
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

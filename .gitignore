@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+.env
+instance/
+chroma_data/
+vector_store.json
+static/uploads/*
+!static/uploads/.gitkeep
+.DS_Store
+migrations/versions/*.pyc

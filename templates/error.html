@@ -1,0 +1,9 @@
+{% extends "auth/layout.html" %}
+{% block title %}{{ code }}{% endblock %}
+{% block body %}
+<div class="text-center space-y-3">
+    <p class="text-5xl font-black text-orange-500">{{ code }}</p>
+    <p class="text-zinc-400">{{ message }}</p>
+    <a href="{{ url_for('main.dashboard') }}" class="text-orange-400 text-sm">Return home</a>
+</div>
+{% endblock %}

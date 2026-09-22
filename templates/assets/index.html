@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Assets{% endblock %}
+{% block page_title %}Assets Directory{% endblock %}
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-3">
+        {% for a in assets %}
+        <div class="bg-darkcard border border-darkborder rounded-2xl p-4 flex items-center justify-between">
+            <div>
+                <p class="font-mono text-orange-400 font-bold">{{ a.asset_code }}</p>
+                <p class="text-sm">{{ a.asset_name }}</p>
+                <p class="text-xs text-zinc-500">{{ a.category }} · {{ a.area }} · {{ a.records|length }} records</p>
+            </div>
+            <a href="{{ url_for('knowledge.index') }}" class="text-xs text-zinc-400">Open logs</a>
+        </div>
+        {% endfor %}
+    </div>
+    {% if current_user.role.value in ['ADMIN', 'ENGINEER'] %}
+    <form method="post" action="{{ url_for('assets.create') }}" class="bg-darkcard border border-darkborder rounded-2xl p-5 space-y-3 h-fit">
+        <h3 class="font-semibold text-sm">Add plant asset</h3>
+        <input name="asset_code" placeholder="Asset code" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm" required>
+        <input name="asset_name" placeholder="Asset name" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm" required>
+        <input name="category" placeholder="Category" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm" required>
+        <input name="area" placeholder="Area" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm" required>
+        <button class="w-full py-2 bg-orange-600 rounded-xl text-sm font-semibold">Save asset</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

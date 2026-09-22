@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Log Breakdown{% endblock %}
+{% block page_title %}Knowledge Capture{% endblock %}
+{% block page_sub %}Desktop & floor-tech breakdown reporting{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="max-w-3xl bg-darkcard border border-darkborder rounded-3xl p-6 space-y-5"
+      x-data="{ files: [], preview(e){ this.files = [...e.target.files].map(f => URL.createObjectURL(f)) }, toast: false }"
+      @submit="toast = true">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="sm:col-span-2">
+            <label class="block text-xs font-semibold mb-1">Asset Selection & Catalog</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                <div>
+                    <label class="block text-[11px] text-zinc-400 mb-1">Select from Registered Assets</label>
+                    <select id="assetSelect" name="asset_id" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200"
+                            onchange="const opt = this.options[this.selectedIndex]; if(opt.dataset.code){ document.getElementById('assetCodeInput').value = opt.dataset.code; document.getElementById('assetDescInput').value = opt.dataset.desc; }">
+                        <option value="">-- Select Asset (or type below) --</option>
+                        {% for a in assets %}
+                        <option value="{{ a.id }}" data-code="{{ a.asset_code }}" data-desc="{{ a.asset_name }}">{{ a.asset_code }} — {{ a.asset_name }} ({{ a.area }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] text-zinc-400 mb-1">Asset Code</label>
+                    <input id="assetCodeInput" name="asset_code" required placeholder="e.g. 21-CV-1013" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200">
+                </div>
+            </div>
+            <div>
+                <label class="block text-[11px] text-zinc-400 mb-1">Asset Description</label>
+                <input id="assetDescInput" name="asset_description" required placeholder="e.g. Sinter Proportioning Incline Conveyor" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-zinc-200">
+            </div>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold mb-1">Breakdown Code</label>
+            <input name="code" value="{{ suggested_code }}" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold mb-1">Category</label>
+            <select name="category" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+                <option>Electrical</option>
+                <option>Instrumentation</option>
+                <option>Mechanical</option>
+                <option>Lubrication</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold mb-1">Received On</label>
+            <input type="datetime-local" name="received_on" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <div>
+            <label class="block text-xs font-semibold mb-1">Completed On</label>
+            <input type="datetime-local" name="completed_on" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+        </div>
+    </div>
+    <div>
+        <label class="block text-xs font-semibold mb-1">Problem Description</label>
+        <textarea name="problem_description" required rows="3" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-sm" placeholder="Symptoms, trips, alarms..."></textarea>
+    </div>
+    <div>
+        <label class="block text-xs font-semibold mb-1">Work Performed</label>
+        <textarea name="work_performed" required rows="3" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-sm"></textarea>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs font-semibold mb-1">Root Cause</label>
+            <textarea name="root_cause" rows="2" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-sm"></textarea>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold mb-1">Corrective Action</label>
+            <textarea name="corrective_action" rows="2" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-sm"></textarea>
+        </div>
+    </div>
+    <div>
+        <label class="block text-xs font-semibold mb-1">Lesson Learned / Notes</label>
+        <textarea name="lesson_learned" rows="2" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-sm"></textarea>
+        <textarea name="notes" rows="2" class="w-full mt-2 bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-sm" placeholder="Additional notes"></textarea>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+        <div>
+            <label class="block text-xs font-semibold mb-1">Downtime (hours)</label>
+            <input type="number" step="0.1" name="downtime_hours" value="0" class="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <label class="flex items-center justify-between bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-3 text-sm">
+            <span>High confidence in identified root cause?</span>
+            <input type="checkbox" name="confident_root_cause" checked class="w-4 h-4 accent-orange-500">
+        </label>
+    </div>
+    <div>
+        <label class="block text-xs font-semibold mb-1">Failure photos / schematics</label>
+        <input type="file" name="photos" multiple accept="image/*" @change="preview($event)" class="block w-full text-xs text-zinc-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-orange-600 file:text-white">
+        <div class="flex gap-2 mt-2 flex-wrap">
+            <template x-for="src in files" :key="src">
+                <img :src="src" class="w-20 h-20 object-cover rounded-xl border border-zinc-700">
+            </template>
+        </div>
+    </div>
+    <div class="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+        <a href="{{ url_for('knowledge.index') }}" class="px-4 py-2 bg-zinc-800 rounded-xl text-xs">Cancel</a>
+        <button class="px-5 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-xs font-semibold">Submit Record</button>
+    </div>
+    <p x-show="toast" class="text-xs text-emerald-400">Saving and indexing for RAG...</p>
+</form>
+{% endblock %}

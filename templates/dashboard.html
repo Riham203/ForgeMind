@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Plant Health Analytics{% endblock %}
+{% block content %}
+<div class="space-y-6" x-data="dashboardApp()" x-init="load()">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-darkcard border border-darkborder p-5 rounded-2xl space-y-2">
+            <div class="flex items-center justify-between text-zinc-400 text-xs"><span>Total Breakdown Count</span><i class="fa-solid fa-wrench text-orange-400"></i></div>
+            <div class="text-2xl font-bold" x-text="kpis.total">{{ total }}</div>
+            <div class="text-xs text-emerald-400">Historical plant incidents</div>
+        </div>
+        <div class="bg-darkcard border border-darkborder p-5 rounded-2xl space-y-2">
+            <div class="flex items-center justify-between text-zinc-400 text-xs"><span>Average Downtime (Hours)</span><i class="fa-solid fa-clock text-amber-400"></i></div>
+            <div class="text-2xl font-bold" x-text="kpis.avgDowntime + ' hrs'">{{ avg_dt }} hrs</div>
+            <div class="text-xs text-amber-400">Mean time to restore</div>
+        </div>
+        <div class="bg-darkcard border border-darkborder p-5 rounded-2xl space-y-2">
+            <div class="flex items-center justify-between text-zinc-400 text-xs"><span>Pending Knowledge Reviews</span><i class="fa-solid fa-hourglass-half text-blue-400"></i></div>
+            <div class="text-2xl font-bold" x-text="kpis.pending">{{ pending }}</div>
+            <div class="text-xs text-blue-400">Requires supervisor approval</div>
+        </div>
+        <div class="bg-darkcard border border-darkborder p-5 rounded-2xl space-y-2">
+            <div class="flex items-center justify-between text-zinc-400 text-xs"><span>Unresolved Critical Incidents</span><i class="fa-solid fa-triangle-exclamation text-red-400"></i></div>
+            <div class="text-2xl font-bold" x-text="kpis.unresolved">{{ unresolved }}</div>
+            <div class="text-xs text-purple-400">Vectorized <span x-text="kpis.vectorizedPct">0</span>%</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-darkcard border border-darkborder p-5 rounded-2xl">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-sm">Breakdown Trends</h3>
+                <span class="text-xs text-zinc-400 bg-zinc-800 px-2.5 py-1 rounded-lg">Daily incidents</span>
+            </div>
+            <div class="h-64"><canvas id="trendChart"></canvas></div>
+        </div>
+        <div class="bg-darkcard border border-darkborder p-5 rounded-2xl">
+            <h3 class="font-semibold text-sm mb-4">Category Distribution</h3>
+            <div class="h-64"><canvas id="categoryChart"></canvas></div>
+        </div>
+        <div class="lg:col-span-3 bg-darkcard border border-darkborder p-5 rounded-2xl">
+            <h3 class="font-semibold text-sm mb-4">Top Faulty Assets</h3>
+            <div class="h-64"><canvas id="assetChart"></canvas></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function dashboardApp() {
+    return {
+        kpis: { total: {{ total }}, avgDowntime: {{ avg_dt }}, pending: {{ pending }}, unresolved: {{ unresolved }}, vectorizedPct: 0 },
+        charts: {},
+        async load() {
+            const res = await fetch('/api/analytics');
+            const data = await res.json();
+            this.kpis = data.kpis;
+            this.render(data);
+        },
+        render(data) {
+            const grid = '#27272a';
+            const tick = '#a1a1aa';
+            const trend = document.getElementById('trendChart');
+            if (trend) {
+                new Chart(trend, {
+                    type: 'line',
+                    data: {
+                        labels: data.trend.labels,
+                        datasets: [
+                            { label: 'Incidents', data: data.trend.counts, borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.12)', fill: true, tension: 0.4 },
+                            { label: 'Downtime (hrs)', data: data.trend.downtime, borderColor: '#fbbf24', borderDash: [5,5], tension: 0.4 }
+                        ]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: tick } } }, scales: { x: { ticks: { color: tick, maxTicksLimit: 8 }, grid: { color: grid } }, y: { ticks: { color: tick }, grid: { color: grid } } } }
+                });
+            }
+            const cat = document.getElementById('categoryChart');
+            if (cat) {
+                new Chart(cat, {
+                    type: 'doughnut',
+                    data: { labels: data.categories.labels, datasets: [{ data: data.categories.values, backgroundColor: ['#f59e0b','#a855f7','#3b82f6','#10b981','#f43f5e'], borderWidth: 0 }] },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: tick, boxWidth: 12 } } } }
+                });
+            }
+            const asset = document.getElementById('assetChart');
+            if (asset) {
+                new Chart(asset, {
+                    type: 'bar',
+                    data: {
+                        labels: data.topAssets.map(a => a.code),
+                        datasets: [{ label: 'Failures', data: data.topAssets.map(a => a.count), backgroundColor: '#ea580c', borderRadius: 6 }]
+                    },
+                    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: tick }, grid: { color: grid } }, y: { ticks: { color: tick }, grid: { color: grid } } } }
+                });
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
